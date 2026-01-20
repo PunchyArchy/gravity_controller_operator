@@ -98,7 +98,7 @@ def run_di_test(operator, timeout):
         label = f"DI{logical_ch}"
         print(
             f"\n{label}: убедитесь, что вход в неактивном состоянии "
-            f"(phys={phys_addr}, logical={logical_ch})."
+            f"(modbus_addr={phys_addr}, logical={logical_ch})."
         )
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
