@@ -120,6 +120,7 @@ def run_di_test(operator, timeout):
     expected_channels = list(range(0, 7))
     print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
     detected_mapping = {}
+    offset = None
     for expected in expected_channels:
         label = f"DI{expected}"
         print(
@@ -127,7 +128,10 @@ def run_di_test(operator, timeout):
             f"(ожидается физический DI{expected})."
         )
         baseline = di_interface.get_phys_dict()
-        if not wait_for_phys_state(di_interface, expected, False, timeout):
+        expected_phys = expected if offset is None else expected + offset
+        if expected_phys in baseline and not wait_for_phys_state(
+            di_interface, expected_phys, False, timeout
+        ):
             action = prompt_retry(
                 f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
             )
@@ -137,29 +141,56 @@ def run_di_test(operator, timeout):
                 continue
 
         print(f"{label}: подайте сигнал на вход.")
-        changed_addr = wait_for_phys_rise(di_interface, baseline, timeout)
-        if changed_addr is None:
-            action = prompt_retry(
-                f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
-            )
-            if action == "quit":
-                return False
-            if action == "skip":
-                continue
-            return run_di_test(operator, timeout)
-        if changed_addr == "multiple":
-            action = prompt_retry(
-                f"{label}: зафиксированы несколько срабатываний. (r)etry/(s)kip/(q)uit: "
-            )
-            if action == "quit":
-                return False
-            if action == "skip":
-                continue
-            return run_di_test(operator, timeout)
+        if offset is None:
+            changed_addr = wait_for_phys_rise(di_interface, baseline, timeout)
+            if changed_addr is None:
+                action = prompt_retry(
+                    f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
+                )
+                if action == "quit":
+                    return False
+                if action == "skip":
+                    continue
+                return run_di_test(operator, timeout)
+            if changed_addr == "multiple":
+                action = prompt_retry(
+                    f"{label}: зафиксированы несколько срабатываний. (r)etry/(s)kip/(q)uit: "
+                )
+                if action == "quit":
+                    return False
+                if action == "skip":
+                    continue
+                return run_di_test(operator, timeout)
 
-        detected_mapping[expected] = changed_addr
-        print(f"{label}: сигнал зафиксирован (phys={changed_addr}). Снимите сигнал.")
-        wait_for_phys_state(di_interface, changed_addr, False, timeout)
+            offset = changed_addr - expected
+            expected_phys = expected + offset
+            print(f"{label}: обнаружен сдвиг адресов: {offset:+d}.")
+        else:
+            if expected_phys not in baseline:
+                action = prompt_retry(
+                    f"{label}: ожидаемый физический канал {expected_phys} отсутствует. "
+                    "(r)etry/(s)kip/(q)uit: "
+                )
+                if action == "quit":
+                    return False
+                if action == "skip":
+                    continue
+                return run_di_test(operator, timeout)
+            if not wait_for_phys_state(di_interface, expected_phys, True, timeout):
+                action = prompt_retry(
+                    f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
+                )
+                if action == "quit":
+                    return False
+                if action == "skip":
+                    continue
+                return run_di_test(operator, timeout)
+
+        detected_mapping[expected] = expected_phys
+        print(
+            f"{label}: сигнал зафиксирован (phys={expected_phys}). Снимите сигнал."
+        )
+        wait_for_phys_state(di_interface, expected_phys, False, timeout)
     if detected_mapping:
         print("\nФактическое соответствие (ожидаемый -> физический):")
         for expected in expected_channels:
