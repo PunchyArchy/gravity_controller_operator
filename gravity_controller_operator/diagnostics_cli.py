@@ -7,7 +7,6 @@ from gravity_controller_operator.controller_factory import ControllerCreator
 from gravity_controller_operator.main import ControllerOperator
 
 
-DI_CHANNELS = list(range(0, 7))
 RELAY_CHANNELS = list(range(1, 7))
 
 
@@ -64,23 +63,44 @@ def prompt_retry(text):
     return "retry"
 
 
+def get_di_mapping(operator):
+    di_interface = operator.interface.di_interface
+    if not di_interface:
+        return []
+    spec_addr = getattr(di_interface, "spec_addr", {})
+    logical_points = list(di_interface.get_state().keys())
+    mapping = []
+    for logical_ch in logical_points:
+        phys_addr = spec_addr.get(logical_ch, logical_ch)
+        mapping.append((phys_addr, logical_ch))
+    mapping.sort(key=lambda item: item[0])
+    return mapping
+
+
 def run_di_test(operator, timeout):
+    mapping = get_di_mapping(operator)
+    if not mapping:
+        print("DI тест пропущен: DI интерфейс не доступен.")
+        return True
     print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
-    for ch in DI_CHANNELS:
-        print(f"\nDI{ch}: убедитесь, что вход в неактивном состоянии.")
-        if not wait_for_state(operator, ch, False, timeout):
+    for index, (phys_addr, logical_ch) in enumerate(mapping):
+        print(
+            f"\nDI{index}: убедитесь, что вход в неактивном состоянии "
+            f"(phys={phys_addr}, logical={logical_ch})."
+        )
+        if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
-                f"DI{ch}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
+                f"DI{index}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
             )
             if action == "quit":
                 return False
             if action == "skip":
                 continue
 
-        print(f"DI{ch}: подайте сигнал на вход.")
-        if not wait_for_state(operator, ch, True, timeout):
+        print(f"DI{index}: подайте сигнал на вход.")
+        if not wait_for_state(operator, logical_ch, True, timeout):
             action = prompt_retry(
-                f"DI{ch}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
+                f"DI{index}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
             )
             if action == "quit":
                 return False
@@ -88,8 +108,8 @@ def run_di_test(operator, timeout):
                 continue
             return run_di_test(operator, timeout)
 
-        print(f"DI{ch}: сигнал зафиксирован. Снимите сигнал.")
-        wait_for_state(operator, ch, False, timeout)
+        print(f"DI{index}: сигнал зафиксирован. Снимите сигнал.")
+        wait_for_state(operator, logical_ch, False, timeout)
     return True
 
 
