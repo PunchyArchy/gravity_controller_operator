@@ -102,6 +102,16 @@ def get_di_mapping(operator):
     return sorted(mapping_by_phys.items(), key=lambda item: item[0])
 
 
+def format_di_debug(di_interface):
+    mapping = []
+    for logical_ch, info in di_interface.get_state().items():
+        phys_addr = info.get("addr", logical_ch) if isinstance(info, dict) else logical_ch
+        mapping.append(f"DI{logical_ch}->DI{phys_addr}")
+    mapping_text = ", ".join(sorted(mapping, key=lambda item: int(item.split("->")[0][2:])))
+    phys_keys = sorted(di_interface.get_phys_dict().keys())
+    return mapping_text, phys_keys
+
+
 def get_phys_channels(di_interface):
     values = di_interface.get_phys_dict()
     keys = sorted(values.keys())
@@ -117,6 +127,9 @@ def run_di_test(operator, timeout):
     if not di_interface:
         print("DI тест пропущен: DI интерфейс не доступен.")
         return True
+    mapping_text, phys_keys = format_di_debug(di_interface)
+    print(f"DI debug: logical->phys mapping: {mapping_text}")
+    print(f"DI debug: phys keys snapshot: {phys_keys}")
     print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
     for logical_ch in range(0, 7):
         label = f"DI{logical_ch}"
