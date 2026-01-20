@@ -67,14 +67,12 @@ def get_di_mapping(operator):
     di_interface = operator.interface.di_interface
     if not di_interface:
         return []
-    spec_addr = getattr(di_interface, "spec_addr", {})
-    logical_points = list(di_interface.get_state().keys())
-    mapping = []
-    for logical_ch in logical_points:
-        phys_addr = spec_addr.get(logical_ch, logical_ch)
-        mapping.append((phys_addr, logical_ch))
-    mapping.sort(key=lambda item: item[0])
-    return mapping
+    mapping_by_phys = {}
+    for logical_ch, info in di_interface.get_state().items():
+        phys_addr = info.get("addr", logical_ch) if isinstance(info, dict) else logical_ch
+        if phys_addr not in mapping_by_phys:
+            mapping_by_phys[phys_addr] = logical_ch
+    return sorted(mapping_by_phys.items(), key=lambda item: item[0])
 
 
 def run_di_test(operator, timeout):
@@ -82,23 +80,23 @@ def run_di_test(operator, timeout):
     if not mapping:
         print("DI тест пропущен: DI интерфейс не доступен.")
         return True
-    logical_channels = [logical_ch for _, logical_ch in mapping]
-    logical_channels_sorted = sorted(logical_channels)
-    if logical_channels_sorted == list(
-        range(logical_channels_sorted[0], logical_channels_sorted[-1] + 1)
+    phys_channels = [phys_addr for phys_addr, _ in mapping]
+    phys_channels_sorted = sorted(phys_channels)
+    if phys_channels_sorted == list(
+        range(phys_channels_sorted[0], phys_channels_sorted[-1] + 1)
     ):
         print(
             "DI тест: требуется по очереди подать сигнал на входы "
-            f"DI{logical_channels_sorted[0]}..DI{logical_channels_sorted[-1]}."
+            f"DI{phys_channels_sorted[0]}..DI{phys_channels_sorted[-1]}."
         )
     else:
-        channels_text = ", ".join(f"DI{ch}" for ch in logical_channels_sorted)
+        channels_text = ", ".join(f"DI{ch}" for ch in phys_channels_sorted)
         print(f"DI тест: требуется по очереди подать сигнал на входы: {channels_text}.")
     for phys_addr, logical_ch in mapping:
-        label = f"DI{logical_ch}"
+        label = f"DI{phys_addr}"
         print(
             f"\n{label}: убедитесь, что вход в неактивном состоянии "
-            f"(modbus_addr={phys_addr}, logical={logical_ch})."
+            f"(phys={phys_addr}, logical={logical_ch})."
         )
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
