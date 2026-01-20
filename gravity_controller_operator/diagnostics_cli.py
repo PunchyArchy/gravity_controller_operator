@@ -36,6 +36,13 @@ def get_state_value(point):
     return point.get("state")
 
 
+def snapshot_logical_states(di_interface):
+    states = {}
+    for ch, info in di_interface.get_state().items():
+        states[ch] = info.get("state") if isinstance(info, dict) else None
+    return states
+
+
 def wait_for_state(operator, ch, expected, timeout):
     start = time.time()
     while time.time() - start < timeout:
@@ -142,11 +149,13 @@ def run_di_test(operator, timeout):
     print(f"DI debug: logical->phys mapping: {mapping_text}")
     print(f"DI debug: phys keys snapshot: {phys_keys}")
     print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
+    observed_mapping = {}
     for logical_ch in range(0, 7):
         label = f"DI{logical_ch}"
         print(f"\n{label}: убедитесь, что вход в неактивном состоянии.")
-        baseline = di_interface.get_phys_dict()
-        print(f"{label}: phys baseline: {baseline}")
+        baseline_phys = di_interface.get_phys_dict()
+        baseline_logical = snapshot_logical_states(di_interface)
+        print(f"{label}: phys baseline: {baseline_phys}")
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
                 f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
@@ -157,18 +166,27 @@ def run_di_test(operator, timeout):
                 continue
 
         print(f"{label}: подайте сигнал на вход.")
-        changed_addr = wait_for_phys_rise(di_interface, baseline, timeout)
+        changed_addr = wait_for_phys_rise(di_interface, baseline_phys, timeout)
         if changed_addr == "multiple":
             current = di_interface.get_phys_dict()
-            changes = describe_phys_changes(baseline, current)
+            changes = describe_phys_changes(baseline_phys, current)
             print(f"{label}: phys changes: {changes}")
             print(f"{label}: phys current: {current}")
         elif changed_addr is not None:
             current = di_interface.get_phys_dict()
-            changes = describe_phys_changes(baseline, current)
+            changes = describe_phys_changes(baseline_phys, current)
             print(f"{label}: phys rise detected at DI{changed_addr}")
             print(f"{label}: phys changes: {changes}")
             print(f"{label}: phys current: {current}")
+            observed_mapping[logical_ch] = changed_addr
+            operator.update_points()
+            logical_now = snapshot_logical_states(di_interface)
+            logical_changes = [
+                ch
+                for ch, prev in baseline_logical.items()
+                if prev is False and logical_now.get(ch) is True
+            ]
+            print(f"{label}: logical changes: {logical_changes}")
 
         if not wait_for_state(operator, logical_ch, True, timeout):
             action = prompt_retry(
@@ -181,7 +199,15 @@ def run_di_test(operator, timeout):
             return run_di_test(operator, timeout)
 
         print(f"{label}: сигнал зафиксирован. Снимите сигнал.")
+        if changed_addr is not None and changed_addr != "multiple":
+            wait_for_phys_state(di_interface, changed_addr, False, timeout)
         wait_for_state(operator, logical_ch, False, timeout)
+    if observed_mapping:
+        mapping_text = ", ".join(
+            f"{k}:{v}" for k, v in sorted(observed_mapping.items())
+        )
+        print(f"\nDI debug: observed logical->phys mapping: {mapping_text}")
+        print(f"DI debug: suggested spec_addr = {observed_mapping}")
     return True
 
 
