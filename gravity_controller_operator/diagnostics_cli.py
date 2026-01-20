@@ -82,25 +82,37 @@ def run_di_test(operator, timeout):
     if not mapping:
         print("DI тест пропущен: DI интерфейс не доступен.")
         return True
-    print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
-    for index, (phys_addr, logical_ch) in enumerate(mapping):
+    logical_channels = [logical_ch for _, logical_ch in mapping]
+    logical_channels_sorted = sorted(logical_channels)
+    if logical_channels_sorted == list(
+        range(logical_channels_sorted[0], logical_channels_sorted[-1] + 1)
+    ):
         print(
-            f"\nDI{index}: убедитесь, что вход в неактивном состоянии "
+            "DI тест: требуется по очереди подать сигнал на входы "
+            f"DI{logical_channels_sorted[0]}..DI{logical_channels_sorted[-1]}."
+        )
+    else:
+        channels_text = ", ".join(f"DI{ch}" for ch in logical_channels_sorted)
+        print(f"DI тест: требуется по очереди подать сигнал на входы: {channels_text}.")
+    for phys_addr, logical_ch in mapping:
+        label = f"DI{logical_ch}"
+        print(
+            f"\n{label}: убедитесь, что вход в неактивном состоянии "
             f"(phys={phys_addr}, logical={logical_ch})."
         )
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
-                f"DI{index}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
+                f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
             )
             if action == "quit":
                 return False
             if action == "skip":
                 continue
 
-        print(f"DI{index}: подайте сигнал на вход.")
+        print(f"{label}: подайте сигнал на вход.")
         if not wait_for_state(operator, logical_ch, True, timeout):
             action = prompt_retry(
-                f"DI{index}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
+                f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
             )
             if action == "quit":
                 return False
@@ -108,7 +120,7 @@ def run_di_test(operator, timeout):
                 continue
             return run_di_test(operator, timeout)
 
-        print(f"DI{index}: сигнал зафиксирован. Снимите сигнал.")
+        print(f"{label}: сигнал зафиксирован. Снимите сигнал.")
         wait_for_state(operator, logical_ch, False, timeout)
     return True
 
