@@ -58,6 +58,22 @@ def wait_for_phys_state(di_interface, phys_addr, expected, timeout):
     return False
 
 
+def wait_for_phys_rise(di_interface, baseline, timeout):
+    start = time.time()
+    while time.time() - start < timeout:
+        values = di_interface.get_phys_dict()
+        changed = []
+        for addr, value in values.items():
+            if baseline.get(addr) is False and value is True:
+                changed.append(addr)
+        if len(changed) == 1:
+            return changed[0]
+        if len(changed) > 1:
+            return "multiple"
+        time.sleep(0.2)
+    return None
+
+
 def prompt_action(text, allowed=("Enter", "q")):
     val = input(text).strip().lower()
     if val in ("q", "quit", "exit"):
@@ -101,26 +117,17 @@ def run_di_test(operator, timeout):
     if not di_interface:
         print("DI тест пропущен: DI интерфейс не доступен.")
         return True
-    mapping = dict(get_di_mapping(operator))
-    phys_channels_sorted = get_phys_channels(di_interface)
-    if phys_channels_sorted == list(
-        range(phys_channels_sorted[0], phys_channels_sorted[-1] + 1)
-    ):
-        print(
-            "DI тест: требуется по очереди подать сигнал на входы "
-            f"DI{phys_channels_sorted[0]}..DI{phys_channels_sorted[-1]}."
-        )
-    else:
-        channels_text = ", ".join(f"DI{ch}" for ch in phys_channels_sorted)
-        print(f"DI тест: требуется по очереди подать сигнал на входы: {channels_text}.")
-    for phys_addr in phys_channels_sorted:
-        logical_ch = mapping.get(phys_addr)
-        label = f"DI{phys_addr}"
+    expected_channels = list(range(0, 7))
+    print("DI тест: требуется по очереди подать сигнал на входы DI0..DI6.")
+    detected_mapping = {}
+    for expected in expected_channels:
+        label = f"DI{expected}"
         print(
             f"\n{label}: убедитесь, что вход в неактивном состоянии "
-            f"(phys={phys_addr}, logical={logical_ch})."
+            f"(ожидается физический DI{expected})."
         )
-        if not wait_for_phys_state(di_interface, phys_addr, False, timeout):
+        baseline = di_interface.get_phys_dict()
+        if not wait_for_phys_state(di_interface, expected, False, timeout):
             action = prompt_retry(
                 f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
             )
@@ -130,7 +137,8 @@ def run_di_test(operator, timeout):
                 continue
 
         print(f"{label}: подайте сигнал на вход.")
-        if not wait_for_phys_state(di_interface, phys_addr, True, timeout):
+        changed_addr = wait_for_phys_rise(di_interface, baseline, timeout)
+        if changed_addr is None:
             action = prompt_retry(
                 f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
             )
@@ -139,9 +147,25 @@ def run_di_test(operator, timeout):
             if action == "skip":
                 continue
             return run_di_test(operator, timeout)
+        if changed_addr == "multiple":
+            action = prompt_retry(
+                f"{label}: зафиксированы несколько срабатываний. (r)etry/(s)kip/(q)uit: "
+            )
+            if action == "quit":
+                return False
+            if action == "skip":
+                continue
+            return run_di_test(operator, timeout)
 
-        print(f"{label}: сигнал зафиксирован. Снимите сигнал.")
-        wait_for_phys_state(di_interface, phys_addr, False, timeout)
+        detected_mapping[expected] = changed_addr
+        print(f"{label}: сигнал зафиксирован (phys={changed_addr}). Снимите сигнал.")
+        wait_for_phys_state(di_interface, changed_addr, False, timeout)
+    if detected_mapping:
+        print("\nФактическое соответствие (ожидаемый -> физический):")
+        for expected in expected_channels:
+            phys = detected_mapping.get(expected)
+            if phys is not None:
+                print(f"DI{expected} -> DI{phys}")
     return True
 
 
