@@ -68,7 +68,7 @@ class DIInterface(SoftStateMixin, BasePhysInterface):
             phys_addr = self.spec_addr.get(logical_ch, logical_ch)
             value = values.get(phys_addr)
             if value is not None:
-                self.update_state(logical_ch, value, mark_time=False)
+                self.update_state(phys_addr, value, mark_time=False)
 
 
 class RelayInterface(SoftStateMixin, RelayPhysInterface):
