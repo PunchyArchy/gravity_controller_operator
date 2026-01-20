@@ -74,6 +74,17 @@ def wait_for_phys_rise(di_interface, baseline, timeout):
     return None
 
 
+def describe_phys_changes(before, after):
+    changes = []
+    for addr, prev in before.items():
+        curr = after.get(addr)
+        if curr is None:
+            continue
+        if prev != curr:
+            changes.append(f"{addr}:{int(prev)}->" f"{int(curr)}")
+    return changes
+
+
 def prompt_action(text, allowed=("Enter", "q")):
     val = input(text).strip().lower()
     if val in ("q", "quit", "exit"):
@@ -134,6 +145,8 @@ def run_di_test(operator, timeout):
     for logical_ch in range(0, 7):
         label = f"DI{logical_ch}"
         print(f"\n{label}: убедитесь, что вход в неактивном состоянии.")
+        baseline = di_interface.get_phys_dict()
+        print(f"{label}: phys baseline: {baseline}")
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
                 f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
@@ -144,6 +157,19 @@ def run_di_test(operator, timeout):
                 continue
 
         print(f"{label}: подайте сигнал на вход.")
+        changed_addr = wait_for_phys_rise(di_interface, baseline, timeout)
+        if changed_addr == "multiple":
+            current = di_interface.get_phys_dict()
+            changes = describe_phys_changes(baseline, current)
+            print(f"{label}: phys changes: {changes}")
+            print(f"{label}: phys current: {current}")
+        elif changed_addr is not None:
+            current = di_interface.get_phys_dict()
+            changes = describe_phys_changes(baseline, current)
+            print(f"{label}: phys rise detected at DI{changed_addr}")
+            print(f"{label}: phys changes: {changes}")
+            print(f"{label}: phys current: {current}")
+
         if not wait_for_state(operator, logical_ch, True, timeout):
             action = prompt_retry(
                 f"{label}: сигнал не зафиксирован. (r)etry/(s)kip/(q)uit: "
