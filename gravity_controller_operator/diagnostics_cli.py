@@ -152,10 +152,13 @@ def run_di_test(operator, timeout):
     observed_mapping = {}
     for logical_ch in range(0, 7):
         label = f"DI{logical_ch}"
+        expected_phys = di_interface.get_state().get(logical_ch, {}).get("addr")
         print(f"\n{label}: убедитесь, что вход в неактивном состоянии.")
         baseline_phys = di_interface.get_phys_dict()
         baseline_logical = snapshot_logical_states(di_interface)
         print(f"{label}: phys baseline: {baseline_phys}")
+        if expected_phys is not None:
+            print(f"{label}: expected phys addr: DI{expected_phys}")
         if not wait_for_state(operator, logical_ch, False, timeout):
             action = prompt_retry(
                 f"{label}: не удалось увидеть неактивный уровень. (r)etry/(s)kip/(q)uit: "
@@ -187,6 +190,11 @@ def run_di_test(operator, timeout):
                 if prev is False and logical_now.get(ch) is True
             ]
             print(f"{label}: logical changes: {logical_changes}")
+            if expected_phys is not None and changed_addr != expected_phys:
+                print(
+                    f"{label}: WARNING mismatch expected phys DI{expected_phys} "
+                    f"but saw DI{changed_addr}"
+                )
 
         if not wait_for_state(operator, logical_ch, True, timeout):
             action = prompt_retry(
