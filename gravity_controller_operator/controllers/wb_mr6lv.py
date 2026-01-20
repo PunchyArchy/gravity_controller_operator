@@ -4,9 +4,9 @@ from pymodbus import Framer
 
 
 class WBMR6LVDI(DIInterface):
-    map_keys_amount = 7
+    map_keys_amount = 8
     starts_with = 0
-    spec_addr = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7}
+    spec_addr = {0: 7, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
 
     def __init__(self, client, slave_id):
         self.client = client
